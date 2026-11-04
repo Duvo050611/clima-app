@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Reporte Clima App</title>
+<style>
+  @page { size: Letter; margin: 2cm 2cm 2cm 2cm; }
+  body { font-family: "Inter", "Segoe UI", Arial, sans-serif; color: #1f2937; font-size: 11pt; line-height: 1.5; }
+  h1 { color: #1e3a8a; font-size: 22pt; margin: 0 0 6px; }
+  h2 { color: #1e3a8a; font-size: 15pt; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; margin-top: 26px; break-after: avoid; }
+  h3 { color: #1e40af; font-size: 12pt; margin-top: 18px; break-after: avoid; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 10pt; }
+  tr { break-inside: avoid; }
+  th, td { border: 1px solid #cbd5e1; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #e0e7ff; color: #1e3a8a; }
+  td:first-child { font-weight: 600; width: 28%; }
+  table.plain td:first-child { font-weight: normal; width: auto; }
+  code, pre { font-family: "JetBrains Mono", Consolas, monospace; font-size: 9pt; background: #f1f5f9; border-radius: 4px; }
+  code { padding: 1px 4px; }
+  pre { padding: 10px; white-space: pre-wrap; break-inside: avoid; }
+  .cover { height: 23cm; display: flex; flex-direction: column; justify-content: center; break-after: page; }
+  .cover .sub { font-size: 14pt; color: #475569; margin-bottom: 40px; }
+  .cover table td:first-child { width: 30%; }
+  .shots { display: flex; gap: 12px; justify-content: center; break-inside: avoid; margin: 10px 0; }
+  .shots figure { margin: 0; text-align: center; width: 27%; }
+  .shots img { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; }
+  figcaption { font-size: 8.5pt; color: #475569; margin-top: 4px; }
+  .ok { color: #15803d; font-weight: 700; }
+  .page-break { break-before: page; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <h1>Prototipo móvil de consulta meteorológica</h1>
+  <div class="sub">Consumo de una API de terceros con React Native y Expo. Opción A: consulta meteorológica</div>
+  <table>
+    <tr><td>Integrantes</td><td>&nbsp;<br>&nbsp;<br>&nbsp;</td></tr>
+    <tr><td>Grupo</td><td>&nbsp;</td></tr>
+    <tr><td>Docente</td><td>&nbsp;</td></tr>
+    <tr><td>API utilizada</td><td>OpenWeather – Current Weather Data 2.5</td></tr>
+    <tr><td>Repositorio</td><td><a href="https://github.com/Duvo050611/clima-app">https://github.com/Duvo050611/clima-app</a></td></tr>
+    <tr><td>Fecha</td><td>Noviembre de 2026</td></tr>
+  </table>
+</section>
+
+<h2>1. Introducción y caso de estudio</h2>
+<p>Una empresa necesita una aplicación móvil para consultar información de un servicio externo sin crear todavía una base de datos propia. Para resolverlo se desarrolló <b>Clima App</b>, un prototipo en React Native y Expo que consulta en tiempo real la API de OpenWeather. La app muestra la <b>temperatura</b>, las <b>condiciones del clima</b> y la <b>ubicación</b> de la ciudad buscada o del lugar donde está el usuario. Todos los datos vienen del servicio externo; la app no guarda nada en una base de datos.</p>
+
+<h2>2. Parte 1: Preparación del proyecto</h2>
+<h3>2.1 Proyecto</h3>
+<table>
+  <tr><th>Elemento</th><th>Detalle</th></tr>
+  <tr><td>Creación</td><td><code>npx create-expo-app clima-app --template blank</code></td></tr>
+  <tr><td>Tecnologías</td><td>Expo SDK 58, React Native 0.88, React 19, expo-location, react-native-safe-area-context</td></tr>
+  <tr><td>Plataformas</td><td>Android e iOS (con Expo Go) y Web</td></tr>
+  <tr><td>Archivos principales</td><td><code>App.js</code> (interfaz) y <code>src/weatherService.js</code> (cliente de la API)</td></tr>
+</table>
+
+<h3>2.2 Identificación y documentación de la API</h3>
+<table>
+  <tr><th>Concepto</th><th>Detalle</th></tr>
+  <tr><td>Proveedor</td><td>OpenWeather (openweathermap.org)</td></tr>
+  <tr><td>Documentación</td><td>https://openweathermap.org/current</td></tr>
+  <tr><td>Endpoint</td><td><code>https://api.openweathermap.org/data/2.5/weather</code></td></tr>
+  <tr><td>Método HTTP</td><td><code>GET</code></td></tr>
+  <tr><td>Protocolo</td><td>HTTPS</td></tr>
+  <tr><td>Clave de acceso</td><td>Sí. Se envía en el parámetro <code>appid</code> y se obtiene con un registro gratuito.</td></tr>
+  <tr><td>Condiciones de uso</td><td>Plan Free: 60 llamadas por minuto y 1,000,000 por mes. Los datos tienen licencia CC BY-SA 4.0, que <b>exige atribución</b>.</td></tr>
+</table>
+
+<p><b>Parámetros utilizados</b></p>
+<table>
+  <tr><th>Parámetro</th><th>Descripción</th></tr>
+  <tr><td><code>q</code></td><td>Nombre de la ciudad, con país opcional (ej. <code>Toluca,MX</code>)</td></tr>
+  <tr><td><code>lat</code>, <code>lon</code></td><td>Coordenadas GPS (botón "Mi ubicación")</td></tr>
+  <tr><td><code>units=metric</code></td><td>Grados Celsius y metros por segundo</td></tr>
+  <tr><td><code>lang=es</code></td><td>Descripción del clima en español</td></tr>
+  <tr><td><code>appid</code></td><td>Clave de acceso</td></tr>
+</table>
+
+<p><b>Ejemplo de solicitud y estructura de la respuesta JSON</b> (se muestran solo los campos que usa la app):</p>
+<pre>GET https://api.openweathermap.org/data/2.5/weather?q=Toluca,MX&amp;units=metric&amp;lang=es&amp;appid=****
+
+{
+  "coord":   { "lon": -99.6672, "lat": 19.2883 },
+  "weather": [ { "description": "cielo claro", "icon": "01d" } ],
+  "main":    { "temp": 17.39, "feels_like": 16.62, "temp_min": 17.39,
+               "temp_max": 17.39, "humidity": 55 },
+  "wind":    { "speed": 2.1 },
+  "dt":      1793462400,
+  "sys":     { "country": "MX" },
+  "name":    "Toluca",
+  "cod":     200
+}</pre>
+
+<h2>3. Parte 2: Implementación</h2>
+<table>
+  <tr><th>Requisito</th><th>Cómo se cumple</th></tr>
+  <tr><td>1. Solicitar información mediante GET</td><td><code>fetch(url, { method: 'GET' })</code> en <code>src/weatherService.js</code>, con timeout de 10 s.</td></tr>
+  <tr><td>2. Procesar la respuesta JSON</td><td><code>parseWeather()</code> valida que la respuesta tenga los campos necesarios y la convierte en un objeto para la interfaz (redondea temperaturas y arma la URL del ícono).</td></tr>
+  <tr><td>3. Mostrar al menos tres campos</td><td><b>Ubicación</b> (ciudad, país y coordenadas), <b>temperatura</b> (actual, sensación térmica, mínima y máxima) y <b>condición</b> (descripción e ícono). Además: humedad, viento y hora de actualización.</td></tr>
+  <tr><td>4. Actualizar o buscar</td><td>Búsqueda por ciudad, botón "Actualizar", deslizar hacia abajo para recargar y botón "Mi ubicación" (GPS).</td></tr>
+  <tr><td>5. Indicadores de carga y errores</td><td><code>ActivityIndicator</code> con el texto "Consultando OpenWeather…" y un recuadro rojo con el mensaje específico de cada error.</td></tr>
+</table>
+
+<p><b>Manejo de respuestas de la API</b></p>
+<table>
+  <tr><th>Situación</th><th>Mensaje que ve el usuario</th></tr>
+  <tr><td>200 OK</td><td>Se muestran los datos</td></tr>
+  <tr><td>401 Clave inválida</td><td>"Clave de API inválida o aún no activada."</td></tr>
+  <tr><td>404 Ciudad no encontrada</td><td>"No se encontró la ciudad. Revisa el nombre."</td></tr>
+  <tr><td>429 Límite de solicitudes</td><td>"Se alcanzó el límite de solicitudes de la API. Espera un minuto…"</td></tr>
+  <tr><td>5xx Error del servidor</td><td>"El servicio meteorológico no está disponible por ahora."</td></tr>
+  <tr><td>Sin red</td><td>"Sin conexión a internet o el servicio no está disponible."</td></tr>
+  <tr><td>Timeout (10 s)</td><td>"El servicio tardó demasiado en responder."</td></tr>
+  <tr><td>Respuesta vacía</td><td>"La API devolvió una respuesta vacía o incompleta."</td></tr>
+</table>
+
+<div class="shots">
+  <figure><img src="capturas/00-inicio-toluca.png"><figcaption>Fig. 1. Pantalla inicial con datos de Toluca</figcaption></figure>
+  <figure><img src="capturas/01-indicador-carga.png"><figcaption>Fig. 2. Indicador de carga durante la consulta</figcaption></figure>
+  <figure><img src="capturas/extra-sin-conexion.png"><figcaption>Fig. 3. Error sin conexión, con la última consulta exitosa conservada</figcaption></figure>
+</div>
+
+<h2>4. Parte 3: Seguridad y validación</h2>
+<table>
+  <tr><th>Medida</th><th>Descripción</th></tr>
+  <tr><td>Uso de HTTPS</td><td>Todas las peticiones, incluidos los íconos del clima, usan <code>https://</code>. Así la clave y los datos viajan cifrados.</td></tr>
+  <tr><td>Protección de la clave</td><td>La clave no está escrita en el código. Se lee de la variable de entorno <code>EXPO_PUBLIC_OPENWEATHER_API_KEY</code>, definida en el archivo <code>.env</code>. Ese archivo está en <code>.gitignore</code> y no se sube al repositorio; solo se sube <code>.env.example</code> con un valor de ejemplo. <br><i>Limitación:</i> Expo incluye las variables <code>EXPO_PUBLIC_*</code> dentro de la app compilada. En producción, la app debería llamar a un backend propio que guarde la clave en el servidor.</td></tr>
+  <tr><td>Validación de parámetros</td><td>La ciudad se recorta y se normaliza, debe tener entre 2 y 60 caracteres y solo puede contener letras (incluidos acentos y ñ), espacios, puntos, comas, apóstrofes y guiones. Las coordenadas deben estar en los rangos válidos (±90° y ±180°). Los parámetros se codifican con <code>URLSearchParams</code> y una entrada inválida <b>nunca se envía</b> a la API.</td></tr>
+  <tr><td>Errores de conexión</td><td>Timeout de 10 s con <code>AbortController</code> y un mensaje claro cuando no hay red. Si falla una consulta nueva, la app conserva la última información válida.</td></tr>
+  <tr><td>Respuestas vacías</td><td>Antes de mostrar los datos se verifica que existan <code>main</code> y <code>weather</code>.</td></tr>
+  <tr><td>Límite de solicitudes</td><td>Mensaje específico para el código 429. Los botones se desactivan mientras hay una consulta en curso para evitar solicitudes repetidas.</td></tr>
+  <tr><td>Permisos mínimos</td><td>La ubicación se pide solo en primer plano y solo cuando el usuario pulsa "Mi ubicación". Si la niega, la app sigue funcionando.</td></tr>
+  <tr><td>Uso permitido y atribución</td><td>El plan gratuito permite el uso en prototipos. Por la licencia CC BY-SA 4.0, la pantalla muestra "Datos meteorológicos proporcionados por OpenWeather" con un enlace al sitio.</td></tr>
+</table>
+
+<h2 class="page-break">5. Parte 4: Pruebas</h2>
+
+<h3>Caso de prueba 1: consulta válida con acentos y espacios sobrantes</h3>
+<table>
+  <tr><th>Campo</th><th>Detalle</th></tr>
+  <tr><td>Objetivo</td><td>Comprobar que la app hace la solicitud GET, procesa el JSON y muestra los campos requeridos.</td></tr>
+  <tr><td>Entrada</td><td><code>"  Ciudad   de México,MX "</code></td></tr>
+  <tr><td>Pasos</td><td>1. Escribir la ciudad en el buscador. 2. Pulsar <b>Buscar</b>.</td></tr>
+  <tr><td>Resultado esperado</td><td>Aparece el indicador de carga y después una tarjeta con la ubicación, la temperatura en °C y la descripción del clima en español.</td></tr>
+  <tr><td>Resultado obtenido</td><td>HTTP 200. <b>Mexico City, MX</b> (lat 19.43, lon -99.13), <b>23 °C</b>, sensación térmica de 22 °C, "nubes", humedad de 29 % y viento de 1.79 m/s. <span class="ok">✔ Aprobado</span></td></tr>
+  <tr><td>Justificación</td><td>Es el flujo principal de la app. En una sola consulta se comprueba que la entrada se normaliza (se quitan los espacios de más), que los caracteres no ASCII (é) se codifican bien en la URL, que funcionan los parámetros <code>lang=es</code> y <code>units=metric</code> y que se procesan los tres campos que pide la actividad.</td></tr>
+</table>
+
+<h3>Caso de prueba 2: ciudad inexistente y entrada maliciosa</h3>
+<table>
+  <tr><th>Campo</th><th>Detalle</th></tr>
+  <tr><td>Objetivo</td><td>Comprobar el manejo de errores de la API y la validación de parámetros.</td></tr>
+  <tr><td>Entrada A</td><td><code>CiudadInexistenteXYZ</code></td></tr>
+  <tr><td>Resultado esperado A</td><td>La API responde 404 y la app muestra un mensaje claro sin cerrarse.</td></tr>
+  <tr><td>Resultado obtenido A</td><td>HTTP 404 <code>{"cod":"404","message":"city not found"}</code>. Se muestra "No se encontró la ciudad. Revisa el nombre." y se conserva la última consulta válida. <span class="ok">✔ Aprobado</span></td></tr>
+  <tr><td>Entrada B</td><td><code>&lt;script&gt;</code></td></tr>
+  <tr><td>Resultado esperado B</td><td>La app rechaza la entrada <b>sin</b> enviar la petición.</td></tr>
+  <tr><td>Resultado obtenido B</td><td>Se muestra "La ciudad solo puede contener letras, espacios, puntos, comas o guiones." Se registró el tráfico de red y hubo <b>0 peticiones</b> a la API. <span class="ok">✔ Aprobado</span></td></tr>
+  <tr><td>Justificación</td><td>Los usuarios se equivocan al escribir y también pueden intentar inyectar código. La prueba muestra que la app distingue entre un error del servicio (404) y una entrada inválida que nunca sale del dispositivo. Esto cubre la validación y el manejo de errores de la Parte 3 y evita gastar solicitudes del límite de la API.</td></tr>
+</table>
+
+<div class="shots">
+  <figure><img src="capturas/caso1-ciudad-valida.png"><figcaption>Fig. 4. Caso 1: Ciudad de México</figcaption></figure>
+  <figure><img src="capturas/caso2-ciudad-no-encontrada.png"><figcaption>Fig. 5. Caso 2A: ciudad no encontrada (404)</figcaption></figure>
+  <figure><img src="capturas/caso2-entrada-invalida.png"><figcaption>Fig. 6. Caso 2B: entrada inválida rechazada</figcaption></figure>
+</div>
+
+<h2>6. Instrucciones de ejecución</h2>
+<pre>git clone https://github.com/Duvo050611/clima-app.git
+cd clima-app
+npm install
+cp .env.example .env      # colocar la API key de OpenWeather
+npx expo start            # escanear el QR con Expo Go
+npx expo start --web      # o abrir la versión web en el navegador</pre>
+
+<h2>7. Conclusiones</h2>
+<p>El prototipo cumple con el caso de estudio: consulta información de un servicio externo sin base de datos propia, la interpreta y la presenta en una interfaz funcional. Separar el acceso a la API (<code>weatherService.js</code>) de la interfaz (<code>App.js</code>) permitiría cambiar de proveedor o agregar un backend intermedio sin rediseñar la pantalla. Como mejoras a futuro se proponen un servidor proxy que proteja la clave, una caché local para consultar sin conexión y el pronóstico de varios días (endpoint <code>/forecast</code>).</p>
+
+<h2>8. Referencias</h2>
+<ul>
+  <li>OpenWeather. <i>Current weather data</i>. https://openweathermap.org/current</li>
+  <li>OpenWeather. <i>Pricing</i>. https://openweathermap.org/price</li>
+  <li>Expo. <i>Documentación del SDK 58</i>. https://docs.expo.dev/versions/v58.0.0/</li>
+  <li>Expo. <i>Variables de entorno</i>. https://docs.expo.dev/guides/environment-variables/</li>
+</ul>
+
+</body>
+</html>
