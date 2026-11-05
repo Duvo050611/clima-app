@@ -1,185 +1,222 @@
-# Clima App: prototipo móvil de consulta meteorológica
+# Destinos App: integración de tres APIs de terceros
 
-Prototipo móvil (React Native + Expo) que consulta la API de **OpenWeather**, procesa la respuesta JSON y muestra temperatura, condiciones del clima y ubicación. No usa una base de datos propia: toda la información viene del servicio externo.
+Aplicación móvil (React Native + Expo + Expo Router) para consultar **destinos turísticos**. Al buscar una ciudad, la app:
 
-**Opción elegida:** A. Consulta meteorológica
+1. La localiza con **Nominatim (OpenStreetMap)**: coordenadas, país, población y artículo de Wikipedia asociado.
+2. Con esas **coordenadas** consulta el clima en **Open-Meteo**.
+3. Con el **artículo** que indicó OpenStreetMap consulta la descripción turística en **Wikipedia**.
+
+Los resultados aparecen juntos en la pestaña **Explorar**. El pronóstico de 7 días está en **Pronóstico** y el estado de cada API (con un interruptor para simular una caída) en **Servicios**.
+
+Ninguna de las tres APIs requiere clave, así que la app no guarda secretos.
+
+> La versión anterior del proyecto (solo OpenWeather) quedó en `docs/actividad-anterior-clima/`.
 
 ---
 
-## 1. Ejecución del proyecto
+## 1. Ejecución
 
 ```bash
-cd clima-app
 npm install
-cp .env.example .env        # y colocar la API key de OpenWeather
-npx expo start              # escanear el QR con Expo Go (Android/iOS)
-npx expo start --web        # o abrir la versión web en el navegador
+npx expo start          # escanear el QR con Expo Go (Android/iOS)
+npx expo start --web    # o abrir en el navegador
+npx expo lint           # revisión de código
 ```
 
 | Tecnología | Versión |
 |---|---|
 | Expo SDK | 58 |
 | React Native | 0.88 |
-| expo-location | 58 (para "Mi ubicación") |
+| Expo Router | 58 (navegación por pestañas) |
+| expo-location | 58 (botón "Mi ubicación") |
+| expo-image | 58 (fotos de Wikipedia con caché) |
 
 ### Estructura
 
 ```
-clima-app/
-├── App.js                 # Pantalla principal (UI, estados de carga/error)
-├── src/weatherService.js  # Cliente HTTP: validación, GET, parseo y manejo de errores
-├── .env.example           # Plantilla de variables de entorno (sin clave real)
-├── .env                   # Clave real: NO se sube al repositorio (.gitignore)
-├── app.json               # Configuración Expo + permiso de ubicación
-└── docs/capturas/         # Capturas de pantalla para la entrega
+src/
+├── app/                         # Rutas (Expo Router)
+│   ├── _layout.js               # Provider de estado + Stack
+│   └── (tabs)/
+│       ├── _layout.js           # Barra de pestañas
+│       ├── index.js             # Explorar: consulta e información integrada de las 3 APIs
+│       ├── pronostico.js        # Pronóstico de 7 días
+│       └── apis.js              # Servicios: endpoints, estado de cada petición y simulador de caída
+├── context/DestinationContext.js  # Orquesta las 3 peticiones y comparte el resultado
+├── services/
+│   ├── http.js                  # Cliente GET común: HTTPS, timeout, errores, medición de tiempo
+│   ├── geocoding.js             # API 1: Nominatim
+│   ├── weather.js               # API 2: Open-Meteo
+│   └── wikipedia.js             # API 3: Wikipedia REST
+├── components/ui.js             # Tarjetas, estados de carga y error
+└── utils/format.js
 ```
 
 ---
 
-## 2. Identificación y documentación de la API
+## 2. APIs utilizadas y sus endpoints
+
+### API 1: Nominatim (OpenStreetMap). Información geográfica
 
 | Concepto | Detalle |
 |---|---|
-| Proveedor | OpenWeather (https://openweathermap.org) |
-| API | Current Weather Data 2.5 (https://openweathermap.org/current) |
-| Endpoint | `https://api.openweathermap.org/data/2.5/weather` |
-| Método HTTP | `GET` |
-| Protocolo | HTTPS |
-| Autenticación | API key en el parámetro `appid` (requiere registro gratuito) |
-| Plan | Free: 60 llamadas/minuto, 1,000,000 llamadas/mes |
-| Licencia de datos | CC BY-SA 4.0; **requiere atribución** a OpenWeather |
+| Documentación | https://nominatim.org/release-docs/latest/api/Search/ |
+| Endpoint (búsqueda) | `GET https://nominatim.openstreetmap.org/search` |
+| Endpoint (inverso, "Mi ubicación") | `GET https://nominatim.openstreetmap.org/reverse` |
+| Parámetros | `q` (destino), `format=jsonv2`, `addressdetails=1`, `extratags=1`, `limit=1`, `accept-language=es` · en inverso: `lat`, `lon`, `zoom=10` |
+| Autenticación | Ninguna. La política de uso pide identificar la app (User-Agent en móvil) y hacer como máximo 1 petición por segundo. |
+| Formato | JSON (arreglo de lugares) |
+| Licencia | ODbL, con atribución a "© colaboradores de OpenStreetMap" |
 
-### Parámetros utilizados
+```json
+[{
+  "lat": "19.2925450", "lon": "-99.6569007",
+  "name": "Toluca", "addresstype": "city",
+  "display_name": "Toluca, Estado de México, 50000, México",
+  "address": { "state": "Estado de México", "country": "México", "country_code": "mx" },
+  "extratags": { "wikipedia": "es:Toluca de Lerdo", "population": "223876" }
+}]
+```
 
-| Parámetro | Uso |
+### API 2: Open-Meteo. Información meteorológica
+
+| Concepto | Detalle |
 |---|---|
-| `q` | Nombre de ciudad, opcionalmente con país: `Toluca,MX` |
-| `lat`, `lon` | Coordenadas (botón "Mi ubicación") |
-| `units=metric` | Temperatura en °C y viento en m/s |
-| `lang=es` | Descripción del clima en español |
-| `appid` | API key |
-
-### Estructura de la respuesta (campos que usa la app)
+| Documentación | https://open-meteo.com/en/docs |
+| Endpoint | `GET https://api.open-meteo.com/v1/forecast` |
+| Parámetros | `latitude`, `longitude` (**tomados de la API 1**), `current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day`, `daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max`, `timezone=auto`, `forecast_days=7` |
+| Autenticación | Ninguna (uso no comercial, hasta 10,000 llamadas/día) |
+| Formato | JSON. `current` es un objeto y `daily` son arreglos paralelos indexados por fecha. |
+| Licencia | CC BY 4.0 |
 
 ```json
 {
-  "coord":   { "lon": -99.6672, "lat": 19.2883 },
-  "weather": [{ "description": "cielo claro", "icon": "01d" }],
-  "main":    { "temp": 17.39, "feels_like": 16.62, "temp_min": 17.39,
-               "temp_max": 17.39, "humidity": 55 },
-  "wind":    { "speed": 2.1 },
-  "dt": 1793462400,
-  "sys":     { "country": "MX" },
-  "name":    "Toluca",
-  "cod":     200
+  "timezone": "America/Mexico_City", "elevation": 2669.0,
+  "current": { "time": "2026-11-04T17:00", "temperature_2m": 20.3, "apparent_temperature": 17.9,
+               "relative_humidity_2m": 38, "weather_code": 3, "wind_speed_10m": 9.0, "is_day": 1 },
+  "daily": { "time": ["2026-11-04", "2026-11-05"], "weather_code": [3, 51],
+             "temperature_2m_max": [23.1, 22.9], "temperature_2m_min": [9.5, 9.3],
+             "precipitation_probability_max": [0, 88] }
 }
 ```
 
-### Campos mostrados en la interfaz
+### API 3: Wikipedia REST API (Page Summary). Información turística
 
-1. **Ubicación**: ciudad, país y coordenadas (`name`, `sys.country`, `coord`)
-2. **Temperatura**: actual, sensación térmica, mínima y máxima (`main.*`)
-3. **Condición del clima**: descripción e ícono (`weather[0]`)
-4. Extras: humedad, velocidad del viento y hora de actualización
+| Concepto | Detalle |
+|---|---|
+| Documentación | https://www.mediawiki.org/wiki/Wikimedia_REST_API |
+| Endpoint (resumen) | `GET https://{lang}.wikipedia.org/api/rest_v1/page/summary/{title}` |
+| Endpoint (equivalente en español) | `GET https://{lang}.wikipedia.org/w/api.php?action=query&prop=langlinks&lllang=es&titles={title}`. Solo se usa cuando OpenStreetMap indica un artículo en otro idioma, por ejemplo `ja:京都市` para Kioto. |
+| Parámetros | `lang` y `title` en la ruta (**tomados de `extratags.wikipedia` de la API 1**; si no existe se usa el nombre del lugar en `es`), `redirect=true` |
+| Autenticación | Ninguna |
+| Formato | JSON |
+| Licencia | CC BY-SA 4.0 |
 
-### Códigos de respuesta manejados
+```json
+{
+  "type": "standard", "title": "Toluca de Lerdo",
+  "description": "capital del Estado de México, México",
+  "extract": "Toluca de Lerdo es una ciudad mexicana, capital del Estado de México…",
+  "thumbnail": { "source": "https://thumb.wikimedia.org/…/330px-Toluca_a_los_pies_del_nevado.jpg" },
+  "content_urls": { "mobile": { "page": "https://es.m.wikipedia.org/wiki/Toluca_de_Lerdo" } }
+}
+```
 
-| Código | Significado | Mensaje en la app |
+> **Nota:** primero se probó **REST Countries**, pero al momento de esta actividad (noviembre de 2026) su versión v3.1 ya no funciona (responde 301 con *"This API version has been deprecated"*) y la nueva v5 exige registro y clave. Por eso se eligió Wikipedia, que es pública y aporta información turística.
+
+---
+
+## 3. Cómo se relacionan las consultas
+
+```
+ Usuario escribe "Madrid"
+        │
+        ▼
+ [API 1] Nominatim ──► lat, lon, país, población, "es:Madrid"
+        │                        │
+        ├──── lat/lon ───────────┼──► [API 2] Open-Meteo ──► clima, pronóstico, hora local
+        │                        │
+        └──── artículo ──────────┴──► [API 3] Wikipedia ───► descripción, foto, enlace
+                     (2 y 3 se piden en paralelo)
+```
+
+- La API 1 es **obligatoria**: sin coordenadas no se puede consultar nada más. Si falla, se muestra el error y se conserva el destino anterior atenuado.
+- Las APIs 2 y 3 se lanzan **en paralelo** con `Promise.allSettled`, así que **la falla de una no afecta a la otra**. Cada tarjeta tiene su propio indicador de carga y su propio mensaje de error.
+- La pantalla mezcla las fuentes: la **portada** usa el nombre de Nominatim y la foto de Wikipedia, y la fila de datos clave combina población (Nominatim) con temperatura, hora local y altitud (Open-Meteo). Cada sección indica su fuente.
+- Si el usuario busca otra ciudad antes de que termine la consulta anterior, las respuestas viejas se descartan (contador `requestId`).
+
+---
+
+## 4. Procesamiento de las respuestas JSON
+
+Cada servicio tiene una función `parse*` que valida la respuesta y la convierte en un objeto pequeño que la interfaz puede pintar directamente. Si faltan campos obligatorios, lanza un `ApiError` con un mensaje en español y la app nunca intenta pintar datos incompletos.
+
+| Función | Entrada | Proceso |
 |---|---|---|
-| 200 | OK | Muestra los datos |
-| 401 | API key inválida o no activada | "Clave de API inválida o aún no activada." |
-| 404 | Ciudad no encontrada | "No se encontró la ciudad. Revisa el nombre." |
-| 429 | Límite de solicitudes excedido | "Se alcanzó el límite de solicitudes…" |
-| 5xx | Falla del servidor | "El servicio meteorológico no está disponible por ahora." |
-| — | Sin red / timeout de 10 s | "Sin conexión…" / "El servicio tardó demasiado…" |
-| 200 sin datos | JSON vacío o incompleto | "La API devolvió una respuesta vacía o incompleta." |
+| `parsePlace()` (`geocoding.js`) | Primer elemento del arreglo | Convierte `lat`/`lon` de **texto a número** (`parseFloat`) y verifica que sean válidos. Toma el nombre de `name` o, si falta, de `address.city/town/village`. Convierte `extratags.population` a entero. Separa `"es:Toluca de Lerdo"` en `{ lang, title }` para la API 3. Pasa `country_code` a mayúsculas y arma el enlace al mapa de OSM. Un arreglo vacío `[]` se interpreta como "destino no encontrado". |
+| `parseForecast()` (`weather.js`) | Objeto con `current` y `daily` | Redondea las temperaturas. Traduce el **código WMO** (`weather_code`) a una descripción en español con emoji. Convierte los **arreglos paralelos** de `daily` (`time[i]`, `temperature_2m_max[i]`, …) en un arreglo de objetos `{ date, max, min, rainChance }`. Genera una recomendación para el viajero (paraguas, abrigo, protector solar). |
+| `parseSummary()` (`wikipedia.js`) | Objeto resumen | Toma `title`, `description` y `extract`. Solo acepta la imagen si su URL es `https://`. Rechaza las páginas de desambiguación (`type: "disambiguation"`) y usa el enlace móvil si existe. |
 
 ---
 
-## 3. Funcionalidad implementada
+## 5. Validación y seguridad
 
-| Requisito | Implementación |
-|---|---|
-| Solicitar información mediante GET | `fetch(..., { method: 'GET' })` en `src/weatherService.js` |
-| Procesar la respuesta JSON | `parseWeather()` convierte el JSON a un objeto para la UI |
-| Mostrar al menos 3 campos | Ubicación, temperatura y condición (+ humedad, viento, mín/máx) |
-| Actualizar o buscar | Búsqueda por ciudad, botón "Actualizar", *pull-to-refresh* y "Mi ubicación" |
-| Indicadores de carga y errores | `ActivityIndicator` y un recuadro de error con el mensaje específico |
-
-Si una consulta falla después de una exitosa, la app conserva la última información válida (atenuada) y muestra el error encima.
-
----
-
-## 4. Medidas de seguridad y validación
-
-1. **HTTPS obligatorio**: todas las peticiones (datos e íconos) usan `https://`.
-2. **La clave no está en el código fuente**: se lee de `process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY`, definida en `.env`. El archivo `.env` está en `.gitignore` y el repositorio solo incluye `.env.example` con un valor de ejemplo.
-   - *Limitación conocida:* en Expo, las variables `EXPO_PUBLIC_*` se incrustan en el bundle de la app compilada. Para una clave gratuita en un prototipo esto es aceptable. En producción, la app debería llamar a un backend propio (proxy) que guarde la clave en el servidor y aplique su propio límite de solicitudes.
-3. **Validación de parámetros** antes de llamar a la API:
-   - Ciudad: se eliminan espacios sobrantes, debe tener entre 2 y 60 caracteres y solo puede incluir letras (con acentos/ñ), espacios, `.` `,` `'` `-`. Se rechazan entradas como `<script>`, números o símbolos.
-   - Coordenadas: deben ser numéricas, con latitud en [-90, 90] y longitud en [-180, 180].
-   - Los parámetros se codifican con `URLSearchParams` para evitar la inyección en la URL.
-   - El campo de texto limita la entrada a 60 caracteres (`maxLength`).
-4. **Disponibilidad del servicio**: timeout de 10 s con `AbortController` y mensajes específicos para falta de conexión, 429 (límite de solicitudes), 5xx y respuestas vacías. Los botones se desactivan mientras hay una consulta en curso para evitar ráfagas de solicitudes.
-5. **Permisos mínimos**: solo se solicita la ubicación *en primer plano* y únicamente cuando el usuario pulsa "Mi ubicación". Si la niega, la app sigue funcionando con la búsqueda por ciudad.
-6. **Uso permitido y atribución**: el plan gratuito permite el uso no comercial y de prototipos. Los datos tienen licencia CC BY-SA 4.0, por lo que la pantalla muestra el texto *"Datos meteorológicos proporcionados por OpenWeather"* con un enlace al sitio.
+1. **HTTPS obligatorio:** `http.js` rechaza cualquier URL que no empiece con `https://` y no la envía. Las tres APIs y las imágenes usan HTTPS. La pestaña **Servicios** muestra el protocolo (🔒 HTTPS) junto a la URL real de cada petición.
+2. **Validación de la entrada:** el destino debe tener entre 2 y 60 caracteres y solo letras (con acentos y ñ), espacios, `.` `,` `'` `-`. Las entradas inválidas como `<script>` o `123` se rechazan **sin hacer ninguna petición**. Las coordenadas se validan por rango.
+3. **Codificación de parámetros:** los valores de la query se codifican con `encodeURIComponent`. El título de Wikipedia, que va en la ruta, también se codifica, y el idioma se valida con una expresión regular antes de usarlo como subdominio.
+4. **Timeout de 10 s** con `AbortController` y mensajes específicos para falta de red, 404, 429, 403, 5xx y respuestas vacías.
+5. **Sin claves:** no hay secretos en el código ni en el bundle.
+6. **Uso responsable:** solo se hace una petición a Nominatim por búsqueda (sin autocompletado). En móvil, tanto las peticiones como las imágenes de Wikimedia se envían con un User-Agent que identifica a la app (Wikimedia responde 403 al agente genérico de Android, `okhttp`), y los botones se desactivan mientras hay una consulta en curso.
+7. **Permisos mínimos:** la ubicación se pide solo en primer plano y únicamente al pulsar "📍 Mi ubicación".
+8. **Atribución:** la pantalla incluye los créditos de OSM (ODbL), Open-Meteo (CC BY 4.0) y Wikipedia (CC BY-SA 4.0).
 
 ---
 
-## 5. Casos de prueba
+## 6. Pruebas
 
-### Caso de prueba 1: consulta válida con acentos y país
+| # | Prueba | Pasos | Resultado esperado |
+|---|---|---|---|
+| 1 | Primera ubicación | Abrir la app (carga **Toluca**) | Las tarjetas API 1, 2 y 3 aparecen con datos de Toluca. En Servicios, las 3 aparecen como "Operativo" con protocolo HTTPS. |
+| 2 | Segunda ubicación | Pulsar **Madrid** | Datos de Madrid, España: clima, hora local de Europa y artículo de Wikipedia. |
+| 3 | Las APIs responden correctamente | Revisar la pestaña **Servicios** | Estado "Operativo", tiempo en ms, protocolo HTTPS y la URL de cada una. |
+| 4 | Una API no disponible | En **Servicios**, activar "Simular servicio caído" en Open-Meteo y pulsar "Repetir la última consulta" | La tarjeta del clima muestra *"Clima no disponible: Sin conexión o el servicio no está disponible."*. con botón "Reintentar"; Nominatim y Wikipedia se siguen mostrando. |
+| 5 | Falla de la API principal | Simular caída de Nominatim y buscar | Mensaje *"No se pudo localizar el destino"*. Se conserva el destino anterior atenuado. |
+| 6 | Destino inexistente | Buscar `CiudadInexistenteXYZ` | *"No se encontró el destino…"* |
+| 7 | Entrada inválida | Buscar `<script>` | Mensaje de validación y **0 peticiones** enviadas. |
+| 8 | Carga | Cualquier búsqueda | Esqueletos de carga animados y un indicador individual en cada sección. |
 
-| Campo | Detalle |
-|---|---|
-| **Objetivo** | Verificar que la app realiza el GET, procesa el JSON y muestra los campos. |
-| **Entrada** | `  Ciudad   de México,MX ` (con espacios sobrantes y acento) |
-| **Pasos** | 1. Escribir la ciudad. 2. Pulsar **Buscar**. |
-| **Resultado esperado** | Se muestra un indicador de carga y después la tarjeta con ciudad *Mexico City, MX*, coordenadas, temperatura en °C, descripción en español, humedad y viento. |
-| **Resultado obtenido** | HTTP 200. *Mexico City, MX* (lat 19.43, lon -99.13), **23 °C**, sensación 22 °C, "nubes", humedad 29 %, viento 1.79 m/s. ✅ |
-| **Justificación** | Es el flujo principal de la app. Comprueba de una vez la normalización de la entrada (se eliminan los espacios sobrantes), la codificación de caracteres no ASCII en la URL (`é`), el parámetro `lang=es`, `units=metric` y el parseo de los campos que pide la actividad (ubicación, temperatura y condición). |
-| **Evidencia** | `docs/capturas/caso1-ciudad-valida.png` |
-
-### Caso de prueba 2: ciudad inexistente y entrada inválida
-
-| Campo | Detalle |
-|---|---|
-| **Objetivo** | Verificar el manejo de errores y la validación de parámetros. |
-| **Entrada A** | `CiudadInexistenteXYZ` |
-| **Resultado esperado A** | La API responde 404 y la app muestra *"No se encontró la ciudad. Revisa el nombre."* sin cerrarse. |
-| **Resultado obtenido A** | HTTP 404 `{"cod":"404","message":"city not found"}` → mensaje mostrado. ✅ |
-| **Entrada B** | `<script>` |
-| **Resultado esperado B** | La app **no** envía la petición y muestra *"La ciudad solo puede contener letras, espacios…"* |
-| **Resultado obtenido B** | Rechazado por `validateCity()` antes del GET; se verificó que se enviaron **0 peticiones** a la API. ✅ |
-| **Justificación** | Un usuario real se equivoca al escribir. La app debe distinguir entre un error del servidor (404) y una entrada inválida que nunca debe salir del dispositivo. Esto demuestra la validación de parámetros y el manejo de errores que pide la Parte 3, y evita gastar solicitudes del límite de la API en entradas inválidas. |
-| **Evidencia** | `docs/capturas/caso2-ciudad-no-encontrada.png`, `docs/capturas/caso2-entrada-invalida.png` |
-
-### Pruebas adicionales sugeridas para la demostración
-
-- Activar el modo avión y pulsar **Actualizar** → mensaje de "Sin conexión…".
-- Pulsar **Mi ubicación** y negar el permiso → mensaje sin cerrar la app.
-- Deslizar hacia abajo (*pull-to-refresh*) → recarga la última consulta.
-
----
-
-## 6. Evidencias a entregar (checklist)
-
-- [x] Proyecto móvil funcional (este directorio)
-- [x] Código fuente (`App.js`, `src/weatherService.js`)
-- [x] Identificación y documentación de la API (sección 2)
-- [x] Capturas de la información obtenida (sección 7)
-- [x] Dos pruebas documentadas (sección 5)
-- [x] Descripción de las medidas de seguridad (sección 4)
-- [x] Reporte formal en PDF: [`docs/Reporte-Clima-App.pdf`](docs/Reporte-Clima-App.pdf)
+La caída simulada no es un error falso: la petición se envía a un dominio `.invalid` (reservado por el RFC 2606), que nunca resuelve, así que `fetch` falla igual que con un servicio caído real. También se puede probar con el modo avión.
 
 ---
 
 ## 7. Capturas
 
-| Pantalla inicial | Indicador de carga | Caso 1: ciudad válida |
-|---|---|---|
-| ![](docs/capturas/00-inicio-toluca.png) | ![](docs/capturas/01-indicador-carga.png) | ![](docs/capturas/caso1-ciudad-valida.png) |
+Tomadas en el **emulador de Android** (Android 17, perfil *Medium Phone*) con Expo Go. Están en `docs/capturas/`. Para la captura del indicador de carga se ralentizó la red del emulador, porque con la red normal la carga dura menos de un segundo.
 
-| Caso 2A: ciudad no encontrada | Caso 2B: entrada inválida | Extra: sin conexión |
-|---|---|---|
-| ![](docs/capturas/caso2-ciudad-no-encontrada.png) | ![](docs/capturas/caso2-entrada-invalida.png) | ![](docs/capturas/extra-sin-conexion.png) |
+### Información integrada de las 3 APIs (dos ubicaciones diferentes)
+
+| Indicador de carga (Kioto) | Toluca, México | Madrid, España | Pronóstico de Madrid |
+|---|---|---|---|
+| ![](docs/capturas/01-indicador-carga.png) | ![](docs/capturas/02-toluca-integrado.png) | ![](docs/capturas/03-madrid-integrado.png) | ![](docs/capturas/04-madrid-pronostico.png) |
+
+### Las APIs responden correctamente (HTTPS)
+
+| Pestaña Servicios |
+|---|
+| ![](docs/capturas/05-apis-respuestas-ok.png) |
+
+### Evidencia de error e indisponibilidad
+
+| Open-Meteo caído (panel) | Open-Meteo caído: las APIs 1 y 3 siguen funcionando | Nominatim caído | Destino inexistente | Entrada inválida |
+|---|---|---|---|---|
+| ![](docs/capturas/06-apis-openmeteo-caido.png) | ![](docs/capturas/07-destino-openmeteo-caido.png) | ![](docs/capturas/08-nominatim-caido.png) | ![](docs/capturas/09-destino-no-encontrado.png) | ![](docs/capturas/10-entrada-invalida.png) |
+
+---
+
+## 8. Entregables
+
+- [x] Proyecto móvil y código fuente (este repositorio)
+- [x] Identificación de las tres APIs y sus endpoints (sección 2)
+- [x] Capturas de la información integrada (sección 7)
+- [x] Evidencia de una prueba de error o indisponibilidad (sección 7, capturas 06 a 10)
+- [x] Descripción del procesamiento de las respuestas JSON (sección 4)

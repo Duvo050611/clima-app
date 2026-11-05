@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Clima App",
+    "name": "Destinos App",
     "slug": "clima-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -25,12 +25,15 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-router",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "La app usa tu ubicación para mostrar el clima donde te encuentras."
+          "locationWhenInUsePermission": "La app usa tu ubicación para mostrar información del destino donde te encuentras."
         }
-      ]
-    ]
+      ],
+      "expo-image"
+    ],
+    "scheme": "destinosapp"
   }
 }
